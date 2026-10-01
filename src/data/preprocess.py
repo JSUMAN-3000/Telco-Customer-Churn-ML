@@ -19,8 +19,10 @@ def preprocess_data(df: pd.DataFrame, target_col: str = "Churn") -> pd.DataFrame
             df = df.drop(columns=[col])
 
     # target to 0/1 if it's Yes/No
-    if target_col in df.columns and df[target_col].dtype == "object":
-        df[target_col] = df[target_col].str.strip().map({"No": 0, "Yes": 1})
+    if target_col in df.columns and not pd.api.types.is_numeric_dtype(df[target_col]):
+        df[target_col] = (
+            df[target_col].astype("string").str.strip().map({"No": 0, "Yes": 1})
+        )
 
     # TotalCharges often has blanks in this dataset -> coerce to float
     if "TotalCharges" in df.columns:

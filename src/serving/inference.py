@@ -24,43 +24,42 @@ Production Deployment:
 - Optimized for single-row inference (real-time serving)
 """
 
-import os
 import pandas as pd
 import mlflow
+from pathlib import Path
 
 # === MODEL LOADING CONFIGURATION ===
-# IMPORTANT: This path is set during Docker container build
-# In development: uses local MLflow artifacts
-# In production: uses model copied to container at build time
-MODEL_DIR = "/app/model"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MODEL_DIR = Path("/app/model")
 
-try:
-    # Load the trained XGBoost model in MLflow pyfunc format
-    # This ensures compatibility regardless of the underlying ML library
-    model = mlflow.pyfunc.load_model(MODEL_DIR)
-    print(f"✅ Model loaded successfully from {MODEL_DIR}")
-except Exception as e:
-    print(f"❌ Failed to load model from {MODEL_DIR}: {e}")
-    # Fallback for local development (OPTIONAL)
-    try:
-        # Try loading from local MLflow tracking
-        import glob
-        local_model_paths = glob.glob("./mlruns/*/*/artifacts/model")
-        if local_model_paths:
-            latest_model = max(local_model_paths, key=os.path.getmtime)
-            model = mlflow.pyfunc.load_model(latest_model)
-            MODEL_DIR = latest_model
-            print(f"✅ Fallback: Loaded model from {latest_model}")
-        else:
-            raise Exception("No model found in local mlruns")
-    except Exception as fallback_error:
-        raise Exception(f"Failed to load model: {e}. Fallback failed: {fallback_error}")
+artifact_roots = [MODEL_DIR]
+artifact_roots.extend(PROJECT_ROOT.glob("src/serving/model/*/artifacts"))
+artifact_roots.extend(PROJECT_ROOT.glob("mlruns/*/*/artifacts"))
+
+valid_roots = [
+    root for root in artifact_roots
+    if (root / "MLmodel").is_file() or (root / "model" / "MLmodel").is_file()
+]
+if not valid_roots:
+    raise FileNotFoundError(
+        "No MLflow model found. Checked /app/model, src/serving/model/*/artifacts, "
+        "and mlruns/*/*/artifacts. Run the training pipeline or provide a model artifact."
+    )
+
+artifact_root = next(
+    (root for root in valid_roots if root == MODEL_DIR),
+    max(valid_roots, key=lambda root: (root / "MLmodel" if (root / "MLmodel").is_file()
+                                       else root / "model" / "MLmodel").stat().st_mtime),
+)
+model_path = artifact_root if (artifact_root / "MLmodel").is_file() else artifact_root / "model"
+model = mlflow.pyfunc.load_model(str(model_path))
+print(f"✅ Model loaded successfully from {model_path}")
 
 # === FEATURE SCHEMA LOADING ===
 # CRITICAL: Load the exact feature column order used during training
 # This ensures the model receives features in the expected order
 try:
-    feature_file = os.path.join(MODEL_DIR, "feature_columns.txt")
+    feature_file = artifact_root / "feature_columns.txt"
     with open(feature_file) as f:
         FEATURE_COLS = [ln.strip() for ln in f if ln.strip()]
     print(f"✅ Loaded {len(FEATURE_COLS)} feature columns from training")
