@@ -1,5 +1,0 @@
-location allocated in terminal :
-Set-Location D:\Telco-Customer-Churn-ML
-
-To start the app locally :
-D:\Python\Python312\python.exe -m uvicorn src.app.main:app --reload --host 127.0.0.1 --port 8000
