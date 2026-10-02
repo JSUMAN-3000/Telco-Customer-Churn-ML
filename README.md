@@ -98,7 +98,7 @@ You may not commercially distribute, sell, sublicense, or monetize this project 
 For commercial use, enterprise deployment, redistribution, or licensing inquiries, please contact:
 
 **Suman Jana**  
-**Email:** Sumanjana80040@gmial.com
+**Email:** Sumanjana80040@gmail.com
 
 ### Legal Notice
 
