@@ -12,7 +12,7 @@ Architecture:
 """
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import gradio as gr
 from src.serving.inference import predict  # Core ML inference logic
 
@@ -31,6 +31,14 @@ def root():
     Health check endpoint for monitoring and load balancer health checks.
     """
     return {"status": "ok"}
+
+
+# To resolve the warnings of pydantic in python notebook
+class PromptModelConfig(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_name: str
+
 
 # === REQUEST DATA SCHEMA ===
 # Pydantic model for automatic validation and API documentation
