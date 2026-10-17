@@ -30,42 +30,43 @@ from pathlib import Path
 
 # === MODEL LOADING CONFIGURATION ===
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_DIR = Path("/app/model")
 
-artifact_roots = [MODEL_DIR]
-artifact_roots.extend(PROJECT_ROOT.glob("src/serving/model/*/artifacts"))
-artifact_roots.extend(PROJECT_ROOT.glob("mlruns/*/*/artifacts"))
+# Docker uses /app/model; local execution uses the original saved artifacts.
+if (Path("/app/model/MLmodel").is_file()):
+    MODEL_DIR = Path("/app/model")
+    ARTIFACT_ROOT = MODEL_DIR
+else:
+    ARTIFACT_ROOT = (
+        PROJECT_ROOT
+        / "src"
+        / "serving"
+        / "model"
+        / "3b1a41221fc44548aed629fa42b762e0"
+        / "artifacts"
+    )
+    MODEL_DIR = ARTIFACT_ROOT / "model"
 
-valid_roots = [
-    root for root in artifact_roots
-    if (root / "MLmodel").is_file() or (root / "model" / "MLmodel").is_file()
-]
-if not valid_roots:
+if not (MODEL_DIR / "MLmodel").is_file():
     raise FileNotFoundError(
-        "No MLflow model found. Checked /app/model, src/serving/model/*/artifacts, "
-        "and mlruns/*/*/artifacts. Run the training pipeline or provide a model artifact."
+        f"Saved MLflow model metadata not found: {MODEL_DIR / 'MLmodel'}"
     )
 
-artifact_root = next(
-    (root for root in valid_roots if root == MODEL_DIR),
-    max(valid_roots, key=lambda root: (root / "MLmodel" if (root / "MLmodel").is_file()
-                                       else root / "model" / "MLmodel").stat().st_mtime),
-)
-model_path = artifact_root if (artifact_root / "MLmodel").is_file() else artifact_root / "model"
-model = mlflow.pyfunc.load_model(str(model_path))
-print(f"✅ Model loaded successfully from {model_path}")
+model = mlflow.pyfunc.load_model(str(MODEL_DIR))
+print(f"Model loaded successfully from {MODEL_DIR}")
 
 # === FEATURE SCHEMA LOADING ===
-# CRITICAL: Load the exact feature column order used during training
-# This ensures the model receives features in the expected order
-try:
-    feature_file = artifact_root / "feature_columns.txt"
-    with open(feature_file) as f:
-        FEATURE_COLS = [ln.strip() for ln in f if ln.strip()]
-    print(f"✅ Loaded {len(FEATURE_COLS)} feature columns from training")
-except Exception as e:
-    raise Exception(f"Failed to load feature columns: {e}")
+# Local feature files are stored beside the nested model directory.
+FEATURE_FILE = ARTIFACT_ROOT / "feature_columns.txt"
 
+if not FEATURE_FILE.is_file():
+    raise FileNotFoundError(
+        f"Feature columns file not found: {FEATURE_FILE}"
+    )
+
+with open(FEATURE_FILE, encoding="utf-8") as f:
+    FEATURE_COLS = [line.strip() for line in f if line.strip()]
+
+print(f"Loaded {len(FEATURE_COLS)} feature columns from training")
 # === FEATURE TRANSFORMATION CONSTANTS ===
 # CRITICAL: These mappings must exactly match those used in training
 # Any changes here will cause train/serve skew and degrade model performance
@@ -220,3 +221,6 @@ def predict(input_dict: dict) -> str:
         return "Likely to churn"      # High risk - needs intervention
     else:
         return "Not likely to churn"  # Low risk - maintain normal service
+
+
+
